@@ -1,0 +1,33 @@
+{{define "content"}}
+<section class="panel narrow">
+  <a class="back" href="/">← Back to tasks</a>
+  <h1>Edit task</h1>
+  <p class="muted">Created {{formatTime .Task.CreatedAt}}</p>
+
+  <form class="task-form" method="post" action="/ui/tasks/{{.Task.ID}}">
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" maxlength="200" required value="{{.Task.Title}}">
+      {{with .Errors.title}}<p class="field-error">{{.}}</p>{{end}}
+    </div>
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" maxlength="2000" rows="4">{{.Task.Description}}</textarea>
+      {{with .Errors.description}}<p class="field-error">{{.}}</p>{{end}}
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" name="completed" value="true" {{if .Task.Completed}}checked{{end}}>
+      Mark as completed
+    </label>
+    <div class="form-actions">
+      <button class="btn primary" type="submit">Save changes</button>
+      <a class="btn ghost" href="/">Cancel</a>
+    </div>
+  </form>
+
+  <form class="danger-zone" method="post" action="/ui/tasks/{{.Task.ID}}/delete"
+        onsubmit="return confirm('Delete this task?')">
+    <button class="btn danger" type="submit">Delete task</button>
+  </form>
+</section>
+{{end}}

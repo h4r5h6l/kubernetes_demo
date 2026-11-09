@@ -1,0 +1,63 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Tasks</h1>
+  <p class="muted">
+    Track what needs doing.
+    {{len .Tasks}} task{{if ne (len .Tasks) 1}}s{{end}} total.
+  </p>
+
+  <form class="task-form" method="post" action="/ui/tasks">
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" maxlength="200" required
+             value="{{.FormTitle}}" placeholder="What needs doing?">
+      {{with .Errors.title}}<p class="field-error">{{.}}</p>{{end}}
+    </div>
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" maxlength="2000" rows="2"
+                placeholder="Optional details">{{.FormDescription}}</textarea>
+      {{with .Errors.description}}<p class="field-error">{{.}}</p>{{end}}
+    </div>
+    <div>
+      <button class="btn primary" type="submit">Add task</button>
+    </div>
+  </form>
+</section>
+
+<section class="task-list">
+  {{if .Tasks}}
+    {{range .Tasks}}
+    <article class="task {{if .Completed}}is-complete{{end}}">
+      <form class="toggle-form" method="post" action="/ui/tasks/{{.ID}}/toggle">
+        <button class="toggle" type="submit"
+                title="{{if .Completed}}Mark as active{{else}}Mark as complete{{end}}"
+                aria-label="Toggle completion">{{if .Completed}}✓{{else}}○{{end}}</button>
+      </form>
+
+      <div class="task-body">
+        <h2 class="task-title">{{.Title}}</h2>
+        {{if .Description}}<p class="task-description">{{.Description}}</p>{{end}}
+        <p class="task-meta">
+          <span class="status {{if .Completed}}status-done{{else}}status-open{{end}}">{{if .Completed}}Done{{else}}Open{{end}}</span>
+          <span>Created {{formatTime .CreatedAt}}</span>
+        </p>
+      </div>
+
+      <div class="task-actions">
+        <a class="btn ghost" href="/ui/tasks/{{.ID}}/edit">Edit</a>
+        <form method="post" action="/ui/tasks/{{.ID}}/delete"
+              onsubmit="return confirm('Delete this task?')">
+          <button class="btn danger" type="submit">Delete</button>
+        </form>
+      </div>
+    </article>
+    {{end}}
+  {{else}}
+    <div class="empty-state">
+      <h2>No tasks yet</h2>
+      <p>Add your first task using the form above.</p>
+    </div>
+  {{end}}
+</section>
+{{end}}

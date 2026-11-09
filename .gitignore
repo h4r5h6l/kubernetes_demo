@@ -1,0 +1,35 @@
+# Binaries and build output
+bin/
+server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Test/coverage output
+coverage.*
+*.prof
+*.cover
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local tooling
+.tmp/
+tmp/

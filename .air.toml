@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -buildvcs=false -o ./tmp/taskmanager ./cmd/server"
+  bin = "./tmp/taskmanager"
+  include_ext = ["go", "html", "tmpl", "tpl", "css"]
+  exclude_dir = ["bin", "tmp", "k8s", ".git"]
+  delay = 500
+  poll = true
+  poll_interval = 500
+  stop_on_error = true
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
