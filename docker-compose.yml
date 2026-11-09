@@ -14,7 +14,9 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      target: production
     image: taskmanager:latest
     environment:
       APP_ENV: production

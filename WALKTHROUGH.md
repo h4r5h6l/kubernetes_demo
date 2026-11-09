@@ -32,7 +32,6 @@ Work top to bottom. Each phase has commands, expected results, and checkboxes.
 | Local UI | `http://localhost:8080/` | same server |
 | API alias | `http://localhost:8080/api/v1/tasks` | same handlers |
 | Compose API/UI | `http://localhost:8080` | `docker compose up` |
-| Dev Compose API/UI | `http://localhost:8080` | `make docker-dev-up` (live reload) |
 | Kubernetes API/UI | `http://localhost:8081` | `kubectl port-forward` |
 | Liveness | `/health` | returns `200 {"status":"ok"}`; no DB access |
 | Readiness | `/ready` | pings PostgreSQL: `200 {"status":"ready"}` or `503 {"status":"unavailable"}` |
@@ -58,11 +57,9 @@ Read these in order. The request path becomes obvious quickly.
 | `web/handler.go` | HTML CRUD, form parsing, validation re-render, redirects |
 | `web/templates/` | layout + list/edit/error pages |
 | `web/static/style.css` | embedded styling, no build step |
-| `Dockerfile` | production: static build → distroless non-root runtime |
-| `Dockerfile.dev` | development: full Go toolchain + Air live reload |
+| `Dockerfile` | three stages: `build` (compile), `dev` (Air live reload), `production` (distroless non-root) |
 | `.air.toml` | Air build/watch settings (polling enabled for bind mounts) |
 | `docker-compose.yml` | production stack: app + Postgres, volumes, healthchecks |
-| `docker-compose.dev.yml` | overrides: dev image, source bind mount, hot reload |
 | `k8s/` | 1-replica Deployment, probes, limits, Postgres StatefulSet + PVC |
 
 **Request lifecycle (API):**
@@ -257,7 +254,8 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Wait until both services show `healthy`.
+Compose builds the `production` stage of the Dockerfile. Wait until both
+services show `healthy`.
 
 ```bash
 BASE=http://localhost:8080
@@ -304,18 +302,70 @@ Checklist:
 - [ ] Data survives `restart app` and `down`/`up`
 - [ ] Image is distroless and runs as non-root
 
-### 6.1 Development image (live reload)
+### 6.1 Building the three stages
 
-`Dockerfile.dev` is the development counterpart to the production image. It keeps
-the full Go toolchain and runs [Air](https://github.com/air-verse/air), which
-rebuilds and restarts the server when a `.go`, template, or CSS file changes.
-The source is bind-mounted, so edits on the host take effect immediately.
+The single Dockerfile has three stages, each built explicitly:
 
 ```bash
-make docker-dev-up      # docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
-make docker-dev-logs    # follow Air + Gin output
-make docker-dev-down    # stop the dev stack
+# Compile-only stage (CI artifact) — no ports, env, or healthcheck
+make docker-build-stage
+# docker build --target build -t taskmanager:build .
+
+# Development stage — Go toolchain + Air
+make docker-dev-build
+# docker build --target dev -t taskmanager:dev .
+
+# Production stage — distroless, non-root, binary only
+make docker-build
+# docker build --target production -t taskmanager:latest .
 ```
+
+> `production` is the final stage, so plain `docker build -t taskmanager:latest .`
+> also builds the production image without `--target`.
+
+Check the production image:
+
+```bash
+docker image inspect taskmanager:latest --format 'user={{.Config.User}} size={{.Size}}'
+docker run --rm --entrypoint /bin/sh taskmanager:latest -c true \
+  && echo "shell present (unexpected)" \
+  || echo "no shell (distroless confirmed)"
+```
+
+Checklist:
+- [ ] `build` target produces `/out/taskmanager` and has no runtime config
+- [ ] `dev` stage starts Air and serves `localhost:8080`
+- [ ] `production` stage is distroless, non-root, and has no Go toolchain
+- [ ] Production healthcheck reaches `/ready` via the binary
+
+### 6.2 Development stage (live reload)
+
+The Dockerfile's `dev` stage is the development counterpart to `production`. It
+keeps the full Go toolchain and runs [Air](https://github.com/air-verse/air),
+which rebuilds and restarts the server when a `.go`, template, or CSS file
+changes. Air reads `.air.toml`, which is copied into the image and is also
+visible through the source bind mount.
+
+There is no separate Compose development override. Start the Compose Postgres
+service, then run the dev image with the source bind-mounted:
+
+```bash
+docker compose up -d postgres
+docker build --target dev -t taskmanager:dev .
+
+docker run --rm -p 8080:8080 \
+  --name taskmanager-dev \
+  --network kubernetes_demo_default \
+  -e APP_ENV=development \
+  -e DATABASE_URL='postgres://postgres:postgres@postgres:5432/tasks?sslmode=disable' \
+  -v "$PWD:/src" \
+  taskmanager:dev
+```
+
+`kubernetes_demo_default` is the network Compose creates for this directory.
+Air watches the bind-mounted source; edit a file and watch `building...` /
+`running...` in the terminal. `Ctrl-C` stops the container; `docker compose down`
+stops Postgres.
 
 Verify the database-aware healthcheck:
 
@@ -326,22 +376,23 @@ curl -sS -w ' HTTP %{http_code}\n' "$BASE/health"   # 200 {"status":"ok"}
 curl -sS -w ' HTTP %{http_code}\n' "$BASE/ready"    # 200 {"status":"ready"}
 
 # Break the dependency and watch readiness fail while liveness stays 200
-docker compose -f docker-compose.yml -f docker-compose.dev.yml stop postgres
+docker compose stop postgres
 curl -sS -w ' HTTP %{http_code}\n' "$BASE/health"   # still 200
 curl -sS -w ' HTTP %{http_code}\n' "$BASE/ready"    # 503 unavailable
-docker compose -f docker-compose.yml -f docker-compose.dev.yml start postgres
+docker compose start postgres
 sleep 5
 curl -sS -w ' HTTP %{http_code}\n' "$BASE/ready"    # 200 again, no restart needed
 ```
 
 Checklist:
-- [ ] Dev stack builds from `Dockerfile.dev` and app becomes healthy
+- [ ] Dev image builds and Air starts from `.air.toml`
 - [ ] Editing a watched file triggers an Air rebuild (`building...` / `running...`)
 - [ ] `/health` stays `200` while Postgres is down; `/ready` returns `503`
 - [ ] `/ready` recovers on its own after Postgres returns
 
-> Dev and production Compose stacks both bind port 8080 — run one at a time.
-> Development data lives in the same `postgres_data` volume as the prod Compose stack.
+> Only one app may bind port 8080 at a time: local `make run`, production
+> Compose, or the dev container. The dev container uses the Compose Postgres
+> service and its `postgres_data` volume.
 
 ---
 
@@ -555,9 +606,8 @@ Postgres CPU/memory, and any restarts.
 | Restart local DB | `docker run -d --rm --name taskmanager-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tasks -p 5432:5432 postgres:16-alpine` |
 | Reset Compose + data | `docker compose down -v` |
 | Stop Compose | `docker compose down` |
-| Start dev stack | `make docker-dev-up` |
-| Stop dev stack | `make docker-dev-down` |
-| Follow dev logs | `make docker-dev-logs` |
+| Start dev container | see section 6.2 (`docker run ... taskmanager:dev`) |
+| Stop dev container | `Ctrl-C` or `docker stop taskmanager-dev` |
 | Delete K8s resources + PVC | `make k8s-down` |
 | Stop port-forward | `kill "$(cat /tmp/opencode/k8s-portforward.pid)"` |
 | Restart port-forward | `make k8s-forward` |
@@ -583,7 +633,7 @@ Destructive warnings:
 | Port-forward dies after pod restart | restart `make k8s-forward` (it binds to a pod, not a stable proxy) |
 | Pod stuck before Ready | `kubectl -n taskmanager describe pod <pod>` and `kubectl -n taskmanager logs <pod>`; startupProbe allows 120s |
 | Pod `Ready=False`, app running | check `/ready` and `kubectl -n taskmanager get endpoints taskmanager`; readiness fails when the DB is unreachable (expected during DB outages) |
-| Dev stack does not rebuild on save | confirm `.air.toml` has `poll = true` (Docker Desktop bind mounts may not emit inotify events) |
+| Dev container does not rebuild on save | confirm `.air.toml` has `poll = true` (Docker Desktop bind mounts may not emit inotify events) and that `.:/src` is mounted |
 | PVC Pending | `kubectl get storageclass`; Minikube should provide `standard` |
 
 ---

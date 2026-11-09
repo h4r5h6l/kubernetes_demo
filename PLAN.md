@@ -51,7 +51,8 @@ A task management web app with:
 │   ├── handler.go                  # HTML handlers
 │   ├── templates/{layout,list,edit,error}.html
 │   └── static/style.css
-├── Dockerfile
+├── Dockerfile                      # build + dev + production stages
+├── .air.toml
 ├── docker-compose.yml
 ├── .dockerignore
 ├── .env.example
@@ -138,12 +139,17 @@ Form actions live under `/ui` so they never collide with the JSON API's `/tasks`
 
 ## 8. Docker & Compose
 
-- **Dockerfile (production):** multi-stage — `golang:1.23-alpine` build → `gcr.io/distroless/static-debian12:nonroot` runtime, non-root user, cached module layer
-- **Dockerfile.dev (development):** `golang:1.23-alpine` + Air live reload, bind-mounted source, `curl`-based healthcheck; used via `docker-compose.dev.yml`
-- **Static binary (required):** `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/taskmanager ./cmd/server`; this is the default `make build` target. `distroless/static` has no libc, so a dynamic binary would fail at startup.
-- **Healthcheck in distroless:** add a `-healthcheck` flag to the server that performs an HTTP GET against `localhost:$PORT/ready` (`-healthcheck-path` selects the path), so Docker `HEALTHCHECK` works without a shell/curl in the image
-- **docker-compose.yml:** `postgres:16-alpine` with named volume + healthcheck; app `depends_on: condition: service_healthy`; app exposed on `8080`
-- `.dockerignore` excludes `.git`, binaries, local env files
+One multi-stage `Dockerfile` with three targets:
+
+- **`build` (compile only):** `golang:1.23-alpine`, copies modules/source, runs `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/taskmanager ./cmd/server`. No `ENV`, `EXPOSE`, `HEALTHCHECK`, or dev tools. Build with `docker build --target build -t taskmanager:build .`
+- **`dev` (development):** `golang:1.23-alpine` + Air v1.61.7 + `curl`; `APP_ENV=development`, `PORT=8080`; `curl`-based `/ready` healthcheck; source bind-mounted by Compose; `.air.toml` uses `poll = true` for Docker bind mounts. Build with `docker build --target dev -t taskmanager:dev .`
+- **`production` (default, final stage):** `golang:1.23-alpine` build → `gcr.io/distroless/static-debian12:nonroot`; copies only the binary, sets `APP_ENV=production`/`PORT=8080`, runs as `nonroot:nonroot`, healthcheck via the binary (`-healthcheck -healthcheck-path /ready`). Build with `docker build --target production -t taskmanager:latest .` or plain `docker build -t taskmanager:latest .`
+- **No `base` stage:** `build` and `dev` each declare their own Go setup. BuildKit reuses identical cached layers and the shared `/go/pkg/mod` cache mount, so there is no meaningful build-time duplication.
+- **Static binary (required):** `distroless/static` has no libc, so the binary must be built with `CGO_ENABLED=0`. `make build` produces the same binary locally at `bin/taskmanager`.
+- **docker-compose.yml:** production stack; `app.build.target: production`; Postgres named volume + healthcheck; app `depends_on: condition: service_healthy`; exposed on `8080`.
+- **Development runtime:** no separate Compose override. Run the `dev` image manually with a source bind mount against the Compose `postgres` service (see `WALKTHROUGH.md` section 6.2).
+- **`docker build .` builds production** because `production` is the final stage.
+- `.dockerignore` excludes `.git`, binaries, local env files, and Dockerfile/Compose files.
 
 ## 9. Kubernetes (`k8s/`, Minikube)
 
@@ -174,7 +180,7 @@ Form actions live under `/ui` so they never collide with the JSON API's `/tasks`
 - [x] **M1 — Foundation:** config loader, pgxpool connection, embedded migration, `/health`, graceful shutdown
 - [x] **M2 — API:** Task model + Postgres repository + JSON CRUD handlers, validation, error envelope; handler tests
 - [x] **M3 — Web UI (optional, already selected):** embedded templates, list/create/edit/delete/toggle routes, static CSS
-- [x] **M4 — Containers:** multi-stage distroless Dockerfile (non-root, static), `.dockerignore`, docker-compose with Postgres named volume + healthcheck; verify end to end
+- [x] **M4 — Containers:** one multi-stage Dockerfile with `build`, `dev`, `production` targets, distroless non-root production runtime (static binary), `.dockerignore`, production docker-compose with Postgres named volume + healthcheck; verify end to end
 - [x] **M5 — Kubernetes:** `deployment.yaml` (1 replica, probes, limits) + `service.yaml` + Postgres manifests; deploy to Minikube
 - [ ] **M6 — Docs:** README with setup, env vars, curl examples, UI walkthrough, compose and Minikube instructions
 

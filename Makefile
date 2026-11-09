@@ -6,10 +6,12 @@ BIN_DIR  := bin
 GOOS     ?= linux
 GOARCH   ?= amd64
 IMAGE    ?= taskmanager:latest
+IMAGE_BUILD ?= taskmanager:build
+IMAGE_DEV   ?= taskmanager:dev
 PORT     ?= 8080
 DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/tasks?sslmode=disable
 
-.PHONY: help run build test fmt vet tidy clean docker-build docker-up docker-down docker-dev-up docker-dev-down docker-dev-logs k8s-image k8s-up k8s-down k8s-forward
+.PHONY: help run build test fmt vet tidy clean docker-build docker-build-stage docker-dev-build docker-up docker-down k8s-image k8s-up k8s-down k8s-forward
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -36,23 +38,20 @@ tidy: ## Tidy go.mod/go.sum
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
 
-docker-build: ## Build the Docker image
-	docker build -t $(IMAGE) .
+docker-build: ## Build the production Docker image (default target)
+	docker build --target production -t $(IMAGE) .
+
+docker-build-stage: ## Build the compile-only image (CI artifact)
+	docker build --target build -t $(IMAGE_BUILD) .
+
+docker-dev-build: ## Build the development image
+	docker build --target dev -t $(IMAGE_DEV) .
 
 docker-up: ## Start app + Postgres with Docker Compose
 	docker compose up --build -d
 
 docker-down: ## Stop Docker Compose services
 	docker compose down
-
-docker-dev-up: ## Start the development stack with live reload
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
-
-docker-dev-down: ## Stop the development stack
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
-
-docker-dev-logs: ## Follow development stack logs
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f app
 
 k8s-image: docker-build ## Load the image into Minikube
 	minikube image load $(IMAGE)
