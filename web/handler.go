@@ -33,8 +33,8 @@ func NewHandler(repo task.Repository) (*Handler, error) {
 		},
 	}
 
-	pages := make(map[string]*template.Template, 3)
-	for _, page := range []string{"list.html", "edit.html", "error.html"} {
+	pages := make(map[string]*template.Template, 4)
+	for _, page := range []string{"list.html", "edit.html", "delete.html", "error.html"} {
 		tmpl, err := template.New("root").Funcs(funcs).
 			ParseFS(assets, "templates/layout.html", "templates/"+page)
 		if err != nil {
@@ -56,6 +56,7 @@ func (h *Handler) RegisterRoutes(r gin.IRouter) {
 	r.GET("/", h.List)
 	r.POST("/ui/tasks", h.Create)
 	r.GET("/ui/tasks/:id/edit", h.Edit)
+	r.GET("/ui/tasks/:id/delete", h.ConfirmDelete)
 	r.POST("/ui/tasks/:id", h.Update)
 	r.POST("/ui/tasks/:id/toggle", h.Toggle)
 	r.POST("/ui/tasks/:id/delete", h.Delete)
@@ -74,6 +75,11 @@ type editPageData struct {
 	Title  string
 	Task   task.Task
 	Errors map[string]string
+}
+
+type deletePageData struct {
+	Title string
+	Task  task.Task
 }
 
 type errorPageData struct {
@@ -239,6 +245,30 @@ func (h *Handler) Toggle(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusSeeOther, "/")
+}
+
+// ConfirmDelete handles GET /ui/tasks/:id/delete and renders a
+// JavaScript-free confirmation step before the task is removed.
+func (h *Handler) ConfirmDelete(c *gin.Context) {
+	id, ok := h.parseID(c)
+	if !ok {
+		return
+	}
+
+	t, err := h.repo.Get(c.Request.Context(), id)
+	if errors.Is(err, task.ErrNotFound) {
+		h.renderError(c, http.StatusNotFound, "Task not found", "This task may have already been deleted.")
+		return
+	}
+	if err != nil {
+		h.internalError(c, err, "Could not load the task.")
+		return
+	}
+
+	h.render(c, http.StatusOK, "delete.html", deletePageData{
+		Title: "Delete task",
+		Task:  t,
+	})
 }
 
 // Delete handles POST /ui/tasks/:id/delete.

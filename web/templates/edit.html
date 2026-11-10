@@ -25,9 +25,8 @@
     </div>
   </form>
 
-  <form class="danger-zone" method="post" action="/ui/tasks/{{.Task.ID}}/delete"
-        onsubmit="return confirm('Delete this task?')">
-    <button class="btn danger" type="submit">Delete task</button>
-  </form>
+  <div class="danger-zone">
+    <a class="btn danger" href="/ui/tasks/{{.Task.ID}}/delete">Delete task</a>
+  </div>
 </section>
 {{end}}

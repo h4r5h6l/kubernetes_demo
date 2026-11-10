@@ -1,0 +1,25 @@
+{{define "content"}}
+<section class="panel narrow">
+  <a class="back" href="/">← Back to tasks</a>
+  <h1>Delete task</h1>
+  <p class="muted">This action cannot be undone.</p>
+
+  <article class="task">
+    <div class="task-body">
+      <h2 class="task-title">{{.Task.Title}}</h2>
+      {{if .Task.Description}}<p class="task-description">{{.Task.Description}}</p>{{end}}
+      <p class="task-meta">
+        <span class="status {{if .Task.Completed}}status-done{{else}}status-open{{end}}">{{if .Task.Completed}}Done{{else}}Open{{end}}</span>
+        <span>Created {{formatTime .Task.CreatedAt}}</span>
+      </p>
+    </div>
+  </article>
+
+  <form class="task-form" method="post" action="/ui/tasks/{{.Task.ID}}/delete">
+    <div class="form-actions">
+      <button class="btn danger" type="submit">Delete task</button>
+      <a class="btn ghost" href="/">Cancel</a>
+    </div>
+  </form>
+</section>
+{{end}}

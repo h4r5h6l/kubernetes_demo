@@ -161,6 +161,7 @@ func TestListPageShowsTasks(t *testing.T) {
 	assertContains(t, body, "Open task")
 	assertContains(t, body, "Jan 2, 2026 15:04")
 	assertContains(t, body, "2 tasks total")
+	assertContains(t, body, `href="/ui/tasks/1/delete"`)
 }
 
 func TestCreateTaskForm(t *testing.T) {
@@ -218,7 +219,7 @@ func TestEditPage(t *testing.T) {
 	assertContains(t, body, "Old title")
 	assertContains(t, body, "Old description")
 	assertContains(t, body, `action="/ui/tasks/1"`)
-	assertContains(t, body, `action="/ui/tasks/1/delete"`)
+	assertContains(t, body, `href="/ui/tasks/1/delete"`)
 }
 
 func TestEditPageNotFound(t *testing.T) {
@@ -345,6 +346,35 @@ func TestDeleteTaskForm(t *testing.T) {
 
 func TestDeleteTaskNotFound(t *testing.T) {
 	rec := postForm(newTestRouter(t, newFakeRepository()), "/ui/tasks/99/delete", nil)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestDeleteConfirmPage(t *testing.T) {
+	repo := newFakeRepository()
+	repo.seed(task.Task{
+		ID:        1,
+		Title:     "Delete me",
+		CreatedAt: time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC),
+	})
+	rec := get(newTestRouter(t, repo), "/ui/tasks/1/delete")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	assertContains(t, body, "Delete me")
+	assertContains(t, body, "Delete task")
+	assertContains(t, body, `action="/ui/tasks/1/delete"`)
+	if len(repo.tasks) != 1 {
+		t.Errorf("len(tasks) = %d after GET, want 1 (confirmation must not delete)", len(repo.tasks))
+	}
+}
+
+func TestDeleteConfirmPageNotFound(t *testing.T) {
+	rec := get(newTestRouter(t, newFakeRepository()), "/ui/tasks/99/delete")
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
