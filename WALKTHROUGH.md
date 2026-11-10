@@ -59,7 +59,7 @@ Read these in order. The request path becomes obvious quickly.
 | `web/static/style.css` | embedded styling, no build step |
 | `Dockerfile` | three stages: `build` (compile), `dev` (Air live reload), `production` (distroless non-root) |
 | `.air.toml` | Air build/watch settings (polling enabled for bind mounts) |
-| `docker-compose.yml` | production stack: app + Postgres, volumes, healthchecks |
+| `docker-compose.yaml` | production stack: app + Postgres, named network/volume, healthchecks, `restart: unless-stopped` |
 | `k8s/` | 1-replica Deployment, probes, limits, Postgres StatefulSet + PVC |
 
 **Request lifecycle (API):**
@@ -355,14 +355,14 @@ docker build --target dev -t taskmanager:dev .
 
 docker run --rm -p 8080:8080 \
   --name taskmanager-dev \
-  --network kubernetes_demo_default \
+  --network taskmanager_net \
   -e APP_ENV=development \
   -e DATABASE_URL='postgres://postgres:postgres@postgres:5432/tasks?sslmode=disable' \
   -v "$PWD:/src" \
   taskmanager:dev
 ```
 
-`kubernetes_demo_default` is the network Compose creates for this directory.
+`taskmanager_net` is the network Compose creates for the `backend` network.
 Air watches the bind-mounted source; edit a file and watch `building...` /
 `running...` in the terminal. `Ctrl-C` stops the container; `docker compose down`
 stops Postgres.

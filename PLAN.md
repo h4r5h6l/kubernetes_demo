@@ -53,7 +53,7 @@ A task management web app with:
 │   └── static/style.css
 ├── Dockerfile                      # build + dev + production stages
 ├── .air.toml
-├── docker-compose.yml
+├── docker-compose.yaml
 ├── .dockerignore
 ├── .env.example
 ├── Makefile
@@ -146,7 +146,7 @@ One multi-stage `Dockerfile` with three targets:
 - **`production` (default, final stage):** `golang:1.23-alpine` build → `gcr.io/distroless/static-debian12:nonroot`; copies only the binary, sets `APP_ENV=production`/`PORT=8080`, runs as `nonroot:nonroot`, healthcheck via the binary (`-healthcheck -healthcheck-path /ready`). Build with `docker build --target production -t taskmanager:latest .` or plain `docker build -t taskmanager:latest .`
 - **No `base` stage:** `build` and `dev` each declare their own Go setup. BuildKit reuses identical cached layers and the shared `/go/pkg/mod` cache mount, so there is no meaningful build-time duplication.
 - **Static binary (required):** `distroless/static` has no libc, so the binary must be built with `CGO_ENABLED=0`. `make build` produces the same binary locally at `bin/taskmanager`.
-- **docker-compose.yml:** production stack; `app.build.target: production`; Postgres named volume + healthcheck; app `depends_on: condition: service_healthy`; exposed on `8080`.
+- **docker-compose.yaml:** production stack; `app.build.target: production`; explicit named network `taskmanager_net`; Postgres named volume + healthcheck; `restart: unless-stopped` on both services; app `depends_on: condition: service_healthy`; exposed on `8080`.
 - **Development runtime:** no separate Compose override. Run the `dev` image manually with a source bind mount against the Compose `postgres` service (see `WALKTHROUGH.md` section 6.2).
 - **`docker build .` builds production** because `production` is the final stage.
 - `.dockerignore` excludes `.git`, binaries, local env files, and Dockerfile/Compose files.

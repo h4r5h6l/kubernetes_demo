@@ -14,5 +14,5 @@ coverage.*
 *.prof
 
 Dockerfile
-docker-compose*.yml
+docker-compose*.y*ml
 .dockerignore
