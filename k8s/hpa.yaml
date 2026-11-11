@@ -28,7 +28,7 @@ spec:
       resource:
         name: cpu
         target:
-          # Percentage of the container's CPU request (50m -> 35m).
+          # Percentage of the container's CPU request (200m -> 140m).
           type: Utilization
           averageUtilization: 70
   behavior:

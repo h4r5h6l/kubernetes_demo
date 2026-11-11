@@ -185,10 +185,60 @@ Air watches the bind-mounted source and rebuilds on change.
 ## Kubernetes
 
 Manifests live in `k8s/` (namespace, secret, configmap, Postgres StatefulSet +
-PVC, Deployment with one replica, Service, optional Ingress). See
-`WALKTHROUGH.md` for the full walkthrough and verification steps.
+PVC, Deployment with one replica, Service, Ingress, and an HPA for load
+testing). See `WALKTHROUGH.md` for the full walkthrough and verification steps.
+
+### Health probes
+
+All probes are real HTTP `GET` requests against the application's own endpoints
+on the named container port `http` (8080). No generic TCP socket probes are used.
+
+| Probe | Path | Checks | Why |
+| --- | --- | --- | --- |
+| `startupProbe` | `/health` | process is serving HTTP | Gives the app up to 120 s to connect and migrate without liveness restarting it |
+| `livenessProbe` | `/health` | process is serving HTTP | Restarts a wedged process; deliberately does **not** touch PostgreSQL, so a DB outage cannot cause a restart loop |
+| `readinessProbe` | `/ready` | process + `SELECT 1` against PostgreSQL | Removes the pod from Service endpoints while the database is unavailable |
+
+The assignment asks for `/health` probes. `/health` is used for startup and
+liveness. Readiness intentionally uses `/ready` because it is the application's
+DB-aware readiness endpoint: it returns `200 {"status":"ready"}` only when the
+connection pool can reach PostgreSQL, and `503 {"status":"unavailable"}`
+otherwise. Pointing readiness at `/health` would keep sending traffic to a pod
+that cannot serve CRUD requests during a database outage. This was verified on
+Minikube: with PostgreSQL scaled to zero the pod became `Ready=False`, Service
+endpoints emptied, `/health` stayed `200`, `/ready` returned `503`, and the app
+restarted zero times.
+
+### Service exposure
+
+`service.yaml` uses `type: ClusterIP` deliberately:
+
+- The app is an internal backend. Its callers are the Ingress controller and
+  in-cluster clients, not external clients directly.
+- ClusterIP gives a stable virtual IP and DNS name (`taskmanager.taskmanager.svc`)
+  independent of pod churn and HPA replica changes.
+- Local access uses `kubectl -n taskmanager port-forward svc/taskmanager 8081:80`.
+  Browser/host access uses the Ingress (`taskmanager.local`).
+- `NodePort` would expose an implementation-specific port on every node, and
+  `LoadBalancer` would request an external cloud load balancer. Neither is
+  needed on Minikube, and both add exposure and cost without adding routing
+  capability already provided by the Ingress.
+
+### Autoscaling and load test
+
+`k8s/hpa.yaml` is an `autoscaling/v2` HPA (CPU target 70% of the `200m` request,
+1–5 replicas). It is included in `k8s/kustomization.yaml` for load testing. The
+Deployment manifest still declares exactly `spec.replicas: 1`; while the HPA
+exists it owns the live replica count.
+
+The accepted 500-concurrent-user run (500 VUs, 2 minutes, through the Ingress)
+completed with **0 failed requests**, **100% checks**, **504.6 req/s**, and a
+**p95 of 518 ms**. The HPA scaled from 1 to 3 ready pods during the run. Full
+methodology, commands, HPA trace, and the discarded baseline are in
+`loadtest/README.md`.
 
 ## Documentation
 
 - `PLAN.md` — architecture, milestones, and design decisions
 - `WALKTHROUGH.md` — code tour and step-by-step verification
+- `loadtest/README.md` — load-test profiles, commands, results, and HPA evidence
