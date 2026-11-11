@@ -141,10 +141,10 @@ Form actions live under `/ui` so they never collide with the JSON API's `/tasks`
 
 One multi-stage `Dockerfile` with three targets:
 
-- **`build` (compile only):** `golang:1.23-alpine`, copies modules/source, runs `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/taskmanager ./cmd/server`. No `ENV`, `EXPOSE`, `HEALTHCHECK`, or dev tools. Build with `docker build --target build -t taskmanager:build .`
-- **`dev` (development):** `golang:1.23-alpine` + Air v1.61.7 + `curl`; `APP_ENV=development`, `PORT=8080`; `curl`-based `/ready` healthcheck; source bind-mounted by Compose; `.air.toml` uses `poll = true` for Docker bind mounts. Build with `docker build --target dev -t taskmanager:dev .`
-- **`production` (default, final stage):** `golang:1.23-alpine` build → `gcr.io/distroless/static-debian12:nonroot`; copies only the binary, sets `APP_ENV=production`/`PORT=8080`, runs as `nonroot:nonroot`, healthcheck via the binary (`-healthcheck -healthcheck-path /ready`). Build with `docker build --target production -t taskmanager:latest .` or plain `docker build -t taskmanager:latest .`
-- **No `base` stage:** `build` and `dev` each declare their own Go setup. BuildKit reuses identical cached layers and the shared `/go/pkg/mod` cache mount, so there is no meaningful build-time duplication.
+- **`build` (compile only):** `golang:1.23-alpine`, copies modules/source, runs `CGO_ENABLED=0 go build -o /out/taskmanager ./cmd/server`. No `ENV`, `EXPOSE`, `HEALTHCHECK`, or dev tools.
+- **`dev` (development):** `golang:1.23-alpine` + Air v1.61.7; `APP_ENV=development`, `PORT=8080`; source bind-mounted by Compose; `.air.toml` uses `poll = true` for Docker bind mounts. Build with `docker build --target dev -t taskmanager:dev .`
+- **`production` (default, final stage):** `golang:1.23-alpine` build → `gcr.io/distroless/static-debian12:nonroot`; copies only the binary, runs as `nonroot:nonroot`, healthcheck via the binary (`-healthcheck -healthcheck-path /ready`). Build with `docker build -t taskmanager:latest .` or `make docker-build`.
+- **No `base` stage:** `build` and `dev` each declare their own Go setup. BuildKit reuses identical layers, so there is no meaningful build-time duplication.
 - **Static binary (required):** `distroless/static` has no libc, so the binary must be built with `CGO_ENABLED=0`. `make build` produces the same binary locally at `bin/taskmanager`.
 - **docker-compose.yaml:** production stack; `app.build.target: production`; explicit named network `taskmanager_net`; Postgres named volume + healthcheck; `restart: unless-stopped` on both services; app `depends_on: condition: service_healthy`; exposed on `8080`.
 - **Development runtime:** no separate Compose override. Run the `dev` image manually with a source bind mount against the Compose `postgres` service (see `WALKTHROUGH.md` section 6.2).

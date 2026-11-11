@@ -106,8 +106,8 @@ Copy `.env.example` to `.env` for local development. `.env` is ignored by Git.
 - **Runtime user:** the production container runs as `nonroot:nonroot`
   (UID/GID 65532) from distroless; it contains no shell, package manager, or Go
   toolchain.
-- **Static binary:** `CGO_ENABLED=0`, `GOOS=linux`, `GOARCH=amd64`, built with
-  `-trimpath -ldflags="-s -w"`, required by `distroless/static`.
+- **Static binary:** `CGO_ENABLED=0` is required by `distroless/static`, which
+  has no libc; a dynamically linked binary would fail to start.
 - **Health:** `/health` is liveness only (no database access); `/ready` pings
   PostgreSQL and returns `503` when it is unavailable.
 
@@ -122,14 +122,29 @@ The multi-stage `Dockerfile` has three targets:
 | `production` | `gcr.io/distroless/static-debian12:nonroot` | Final/default stage, binary only |
 
 ```bash
-make docker-build          # docker build --target production -t taskmanager:latest .
-make docker-build-stage    # compile-only artifact
+make docker-build          # docker build -t taskmanager:latest .
 make docker-dev-build      # development image with Air
 docker build .             # production, because it is the final stage
 ```
 
 The production image is approximately **38.5 MB**, runs as non-root, and has a
 `HEALTHCHECK` that calls the binary against `/ready`.
+
+### Dockerfile at a glance
+
+| Instruction | Purpose |
+| --- | --- |
+| `FROM golang:1.23-alpine AS build` | Official Go image with the full toolchain |
+| `WORKDIR /src` | Build directory inside the image |
+| `COPY go.mod go.sum` + `RUN go mod download` | Cache dependencies in their own layer |
+| `COPY . .` | Copy the source into the build stage |
+| `RUN CGO_ENABLED=0 go build ...` | Static binary, required by distroless |
+| `FROM .../static-debian12:nonroot` | Distroless runtime: no shell, non-root |
+| `COPY --from=build` | Copy only the compiled binary |
+| `EXPOSE 8080` | Document the listen port |
+| `USER nonroot:nonroot` | Run the process unprivileged |
+| `HEALTHCHECK ...` | Call the binary against `/ready` |
+| `ENTRYPOINT` | Start the server |
 
 ## Compose services
 

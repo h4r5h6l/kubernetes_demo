@@ -8,3 +8,5 @@ resources:
   - postgres.yaml
   - deployment.yaml
   - service.yaml
+  - ingress.yaml
+  - hpa.yaml

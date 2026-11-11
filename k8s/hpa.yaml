@@ -1,0 +1,52 @@
+# HorizontalPodAutoscaler for the taskmanager Deployment.
+# This resource is included in k8s/kustomization.yaml and is applied with the
+# rest of the application manifests. It requires metrics-server for CPU data.
+#
+# Apply and inspect:
+#   minikube addons enable metrics-server
+#   kubectl apply -k k8s/
+#   kubectl -n taskmanager get hpa taskmanager -w
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: taskmanager
+  namespace: taskmanager
+  labels:
+    app: taskmanager
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: taskmanager
+  # Keep at least one replica when idle. The Deployment's replicas field is
+  # the initial count; the HPA manages it between these bounds.
+  minReplicas: 1
+  # 5 x pgx MaxConns(10) = 50 connections, under PostgreSQL's default 100.
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          # Percentage of the container's CPU request (50m -> 35m).
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      # React immediately when CPU usage rises above the target.
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      # Scale down slowly to avoid flapping.
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

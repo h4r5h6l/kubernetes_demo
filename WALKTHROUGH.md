@@ -302,22 +302,19 @@ Checklist:
 - [ ] Data survives `restart app` and `down`/`up`
 - [ ] Image is distroless and runs as non-root
 
-### 6.1 Building the three stages
+### 6.1 Building the stages
 
-The single Dockerfile has three stages, each built explicitly:
+The single Dockerfile has three stages. `build` is internal; `dev` and
+`production` are the two images you build:
 
 ```bash
-# Compile-only stage (CI artifact) — no ports, env, or healthcheck
-make docker-build-stage
-# docker build --target build -t taskmanager:build .
-
 # Development stage — Go toolchain + Air
 make docker-dev-build
 # docker build --target dev -t taskmanager:dev .
 
 # Production stage — distroless, non-root, binary only
 make docker-build
-# docker build --target production -t taskmanager:latest .
+# docker build -t taskmanager:latest .
 ```
 
 > `production` is the final stage, so plain `docker build -t taskmanager:latest .`
