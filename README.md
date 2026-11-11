@@ -3,6 +3,22 @@
 A Go task manager with a JSON API, server-rendered web UI, and PostgreSQL. It
 runs with Docker Compose or Kubernetes (Minikube).
 
+## Repository structure
+
+```text
+.
+├── cmd/server/       # Application entry point
+├── internal/         # Configuration, database, API, and health handlers
+├── migrations/       # Embedded PostgreSQL schema migrations
+├── web/              # HTML handlers, templates, and static assets
+├── k8s/              # Kubernetes app, database, service, ingress, and HPA
+├── loadtest/         # k6 script, results, and load-test report
+├── Dockerfile
+├── docker-compose.yaml
+├── Makefile
+└── README.md
+```
+
 ## Run locally
 
 ```bash
